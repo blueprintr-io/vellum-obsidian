@@ -67,6 +67,7 @@ jobs:
           npm run build
           npx --no-install playwright install --with-deps chromium
           npm run test:frame
+          xvfb-run -a npm run test:obsidian
       - if: steps.latest.outputs.update == 'true'
         id: publish
         name: Commit, tag and push

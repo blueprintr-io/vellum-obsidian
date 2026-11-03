@@ -148,11 +148,12 @@ See [`src/api.ts`](src/api.ts) for the full interface.
 ## Updates
 
 A scheduled workflow watches Vellum's releases. When a new one appears it
-pins the new core, runs the type checks, unit tests and browser tests against
-it, and publishes a plugin release. Obsidian offers the update under
-**Settings → Community plugins → Check for updates**; BRAT installs it
-automatically. If a Vellum release fails the checks, no plugin release is
-published and an issue is opened instead.
+pins the new core and runs the type checks, unit tests, browser tests and
+end-to-end tests in a real Obsidian against it, then publishes a plugin
+release. Obsidian offers the update under **Settings → Community plugins →
+Check for updates**; BRAT installs it automatically. If a Vellum release
+fails the checks, no plugin release is published and an issue is opened
+instead.
 
 ## Privacy
 
@@ -170,7 +171,12 @@ npm ci
 npm run build        # fetches the pinned Vellum release into vendor/vellum
 npm test             # unit tests
 npm run test:frame   # browser tests (Playwright, Chromium)
+xvfb-run -a npm run test:obsidian   # end-to-end tests in a real Obsidian (Linux)
 ```
+
+The end-to-end tests download the Obsidian release named in
+`scripts/obsidian.mjs`, check its SHA-256, and install the built plugin in a
+fresh vault. Set `OBSIDIAN_BIN` to use an Obsidian binary you already have.
 
 `vellum-core.json` pins the Vellum release the plugin is built from;
 `npm run core -- pin [tag]` moves it. Set `VELLUM_CORE_DIR` to build against

@@ -51,6 +51,8 @@ jobs:
       - run: npm run build
       - run: npx --no-install playwright install --with-deps chromium
       - run: npm run test:frame
+      - name: End-to-end tests in Obsidian
+        run: xvfb-run -a npm run test:obsidian
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

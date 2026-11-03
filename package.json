@@ -21,7 +21,8 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p frame/tsconfig.json && tsc -p test/tsconfig.json",
     "test": "node --test --import tsx --import ./test/unit/register.mjs test/unit/*.test.ts",
     "test:frame": "playwright test -c test/frame/playwright.config.ts",
-    "bump": "node scripts/version.mjs"
+    "bump": "node scripts/version.mjs",
+    "test:obsidian": "playwright test -c test/e2e/playwright.config.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.0.0",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
+    "@types/jsdom": "28.0.1",
     "@types/node": "22.15.30",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
