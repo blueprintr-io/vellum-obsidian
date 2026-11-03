@@ -125,16 +125,14 @@ test.beforeAll(async () => {
   });
   win.on('pageerror', (error) => errors.push(`${error.message}\n${error.stack ?? ''}`));
   await win.waitForFunction(() => (window as unknown as { app?: any }).app?.workspace?.layoutReady === true, null, { timeout: 90_000 });
-  // Community plugins start off in a new vault; turn them on as a user
-  // would, which loads the plugins listed in community-plugins.json.
-  await win.evaluate(async () => {
-    const obsidian = (window as unknown as { app: any }).app;
-    localStorage.setItem(`enable-plugin-${obsidian.appId}`, 'true');
-    await obsidian.plugins.setEnable(true);
-  });
-  await win.waitForFunction(() => !!(window as unknown as { app: any }).app.plugins.plugins.vellum, null, { timeout: 60_000 });
+  // A vault opened for the first time with plugins in it asks whether to
+  // trust its author. Answering yes turns community plugins on, loads the
+  // ones in community-plugins.json, then opens their settings.
+  await win.locator('.modal.mod-trust-folder').getByRole('button', { name: 'Trust author and enable plugins' }).click({ timeout: 60_000 });
+  await expect(win.locator('.modal.mod-settings')).toBeVisible({ timeout: 60_000 });
   await win.evaluate(() => (window as unknown as { app: any }).app.plugins.plugins.vellum.ready);
-  await win.evaluate(() => document.querySelectorAll<HTMLElement>('.modal-container .modal-close-button').forEach((b) => b.click()));
+  await win.evaluate(() => (window as unknown as { app: any }).app.setting.close());
+  await expect(win.locator('.modal-container')).toHaveCount(0);
 });
 
 test.afterEach(async ({}, info) => {
@@ -200,9 +198,10 @@ test('Obsidian hotkeys work while the editor has focus', async () => {
 
 test('the editor follows Obsidian\'s theme', async () => {
   const themeClass = () => activeFrame().locator('html').getAttribute('class');
-  await win.evaluate(() => (window as unknown as { app: any }).app.commands.executeCommandById('theme:use-dark'));
+  // Obsidian's base themes: "obsidian" is dark, "moonstone" is light.
+  await win.evaluate(() => (window as unknown as { app: any }).app.changeTheme('obsidian'));
   await expect.poll(themeClass).not.toContain('theme-light');
-  await win.evaluate(() => (window as unknown as { app: any }).app.commands.executeCommandById('theme:use-light'));
+  await win.evaluate(() => (window as unknown as { app: any }).app.changeTheme('moonstone'));
   await expect.poll(themeClass).toContain('theme-light');
 });
 
@@ -238,6 +237,8 @@ test('Add stratum creates a note beside the diagram', async () => {
 test('renaming a note rewrites the links that point at it', async () => {
   await win.evaluate(async () => {
     const obsidian = (window as unknown as { app: any }).app;
+    // Moving a file doesn't create the folder it moves into.
+    await obsidian.vault.createFolder('Ops');
     await obsidian.fileManager.renameFile(obsidian.vault.getFileByPath('Runbook.md'), 'Ops/Recovery.md');
   });
   await expect.poll(() => read('Flow.vellum'), { timeout: 30_000 }).toContain('link: "[[Recovery]]"');
