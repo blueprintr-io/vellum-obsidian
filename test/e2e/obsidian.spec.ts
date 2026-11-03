@@ -6,7 +6,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, expect, test, type Browser, type FrameLocator, type Page } from '@playwright/test';
+import { chromium, expect, test, type Browser, type FrameLocator, type Page, type TestInfo } from '@playwright/test';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const services = readFileSync(join(root, 'test', 'fixtures', 'services.vellum'), 'utf8');
@@ -114,9 +114,7 @@ async function clearEditor(frame: FrameLocator) {
 
 test.describe.configure({ mode: 'serial' });
 
-test.beforeAll(async () => {
-  // A cold Electron start on a CI runner can take a while.
-  test.setTimeout(300_000);
+async function start() {
   const made = makeVault();
   vault = made.dir;
   win = await launch(made.config);
@@ -126,21 +124,36 @@ test.beforeAll(async () => {
   win.on('pageerror', (error) => errors.push(`${error.message}\n${error.stack ?? ''}`));
   await win.waitForFunction(() => (window as unknown as { app?: any }).app?.workspace?.layoutReady === true, null, { timeout: 90_000 });
   // A vault opened for the first time with plugins in it asks whether to
-  // trust its author. Answering yes turns community plugins on, loads the
-  // ones in community-plugins.json, then opens their settings.
-  await win.locator('.modal.mod-trust-folder').getByRole('button', { name: 'Trust author and enable plugins' }).click({ timeout: 60_000 });
-  await expect(win.locator('.modal.mod-settings')).toBeVisible({ timeout: 60_000 });
-  await win.evaluate(() => (window as unknown as { app: any }).app.plugins.plugins.vellum.ready);
-  await win.evaluate(() => (window as unknown as { app: any }).app.setting.close());
+  // trust its author. Answering yes turns community plugins on and loads the
+  // ones in community-plugins.json; the prompt closes once that's done.
+  const trust = win.locator('.modal.mod-trust-folder');
+  await trust.getByRole('button', { name: 'Trust author and enable plugins' }).click({ timeout: 60_000 });
+  await expect(trust).toHaveCount(0, { timeout: 60_000 });
+  // Obsidian may open its settings as the prompt closes.
+  await win.evaluate(() => document.querySelectorAll<HTMLElement>('.modal-container .modal-close-button').forEach((b) => b.click()));
   await expect(win.locator('.modal-container')).toHaveCount(0);
+  await win.evaluate(() => (window as unknown as { app: any }).app.plugins.plugins.vellum.ready);
+}
+
+async function saveDiagnostics(info: TestInfo) {
+  await win?.screenshot({ path: info.outputPath('obsidian.png') }).catch(() => {});
+  writeFileSync(info.outputPath('console-errors.txt'), errors.join('\n\n'));
+  writeFileSync(info.outputPath('obsidian-output.txt'), output);
+}
+
+test.beforeAll(async ({}, info) => {
+  // A cold Electron start on a CI runner can take a while.
+  test.setTimeout(300_000);
+  try {
+    await start();
+  } catch (error) {
+    await saveDiagnostics(info);
+    throw error;
+  }
 });
 
 test.afterEach(async ({}, info) => {
-  if (info.status !== info.expectedStatus) {
-    await win?.screenshot({ path: info.outputPath('obsidian.png') }).catch(() => {});
-    writeFileSync(info.outputPath('console-errors.txt'), errors.join('\n\n'));
-    writeFileSync(info.outputPath('obsidian-output.txt'), output);
-  }
+  if (info.status !== info.expectedStatus) await saveDiagnostics(info);
 });
 
 test.afterAll(async () => {
