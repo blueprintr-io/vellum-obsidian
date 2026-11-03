@@ -1,0 +1,70 @@
+version: workspace-1.0
+activeTabId: tab-1
+tabs:
+  - id: tab-1
+    diagram:
+      version: "1.0"
+      meta:
+        title: Services
+      shapes:
+        - id: api
+          kind: rect
+          body: API Gateway
+          x: 100
+          y: 100
+          w: 160
+          h: 80
+          layer: blueprint
+        - id: db
+          kind: rect
+          body: Orders DB
+          x: 420
+          y: 100
+          w: 160
+          h: 80
+          layer: blueprint
+        - id: docs
+          kind: rect
+          body: See [[Runbook]] for failover
+          x: 100
+          y: 300
+          w: 200
+          h: 80
+          layer: blueprint
+        - id: site
+          kind: rect
+          body: Status page
+          x: 420
+          y: 300
+          w: 160
+          h: 80
+          layer: blueprint
+          meta:
+            link: https://status.example.com
+      connectors:
+        - id: c1
+          from:
+            shape: api
+            anchor: right
+          to:
+            shape: db
+            anchor: left
+          routing: straight
+          label: reads
+      annotations: []
+  - id: tab-2
+    diagram:
+      version: "1.0"
+      meta:
+        title: Second
+      shapes:
+        - id: api
+          kind: ellipse
+          body: Copied API
+          x: 0
+          y: 0
+          w: 120
+          h: 80
+          layer: blueprint
+      connectors: []
+      annotations: []

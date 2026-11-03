@@ -1,0 +1,65 @@
+name: Release
+
+# Publishes a GitHub release whose tag equals the manifest version, with the
+# three files Obsidian installs. Runs for a pushed version tag, and as the
+# last job of follow-vellum.yml, because tags that workflow pushes do not
+# start other workflows.
+
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check the tag matches the manifest
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./manifest.json').version")
+          if [ "$version" != "$TAG" ]; then
+            echo "::error::manifest.json says $version but the tag is $TAG"
+            exit 1
+          fi
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run core
+      - run: npm run core -- check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx --no-install playwright install --with-deps chromium
+      - run: npm run test:frame
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          core=$(node -p "require('./vellum-core.json').tag")
+          notes="Built with Vellum $core (https://github.com/blueprintr-io/vellum-editor/releases/tag/$core)."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$TAG" main.js manifest.json styles.css --title "$TAG" --notes "$notes" --generate-notes
+          fi

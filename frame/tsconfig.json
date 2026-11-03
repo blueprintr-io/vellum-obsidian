@@ -1,0 +1,17 @@
+{
+  "extends": "../vendor/vellum/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["vendor/vellum/src/*"]
+    },
+    "noEmit": true
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.tsx",
+    "../shared/**/*.ts",
+    "../vendor/vellum/src/vite-env.d.ts",
+    "../vendor/vellum/src/gifenc.d.ts"
+  ]
+}

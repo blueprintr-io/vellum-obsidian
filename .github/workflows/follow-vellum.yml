@@ -1,0 +1,100 @@
+name: Follow Vellum
+
+# Ships a plugin release for each Vellum core release. It checks hourly and
+# on demand. When core has a newer release tag, it pins it, runs every check
+# against it, bumps the patch version, tags and publishes. A core release
+# that fails a check opens an issue instead of shipping.
+#
+# Core's release workflow can start this at once with a repository_dispatch
+# event of type `vellum-release`, sent with a token that can dispatch to
+# this repository.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [vellum-release]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: follow-vellum
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.publish.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - id: latest
+        name: Look for a newer core release
+        run: |
+          set -euo pipefail
+          latest=$(node scripts/core.mjs latest)
+          pinned=$(node -p "require('./vellum-core.json').tag")
+          echo "tag=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" = "$pinned" ]; then
+            echo "Vellum $pinned is already pinned."
+            echo "update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Vellum $latest is newer than $pinned."
+            echo "update=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.latest.outputs.update == 'true'
+        name: Pin it
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          node scripts/core.mjs pin "${{ steps.latest.outputs.tag }}"
+          npm install --ignore-scripts --no-audit --no-fund
+      - if: steps.latest.outputs.update == 'true'
+        name: Check
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm test
+          npm run build
+          npx --no-install playwright install --with-deps chromium
+          npm run test:frame
+      - if: steps.latest.outputs.update == 'true'
+        id: publish
+        name: Commit, tag and push
+        run: |
+          set -euo pipefail
+          version=$(node scripts/version.mjs patch)
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vellum-core.json package.json package-lock.json manifest.json versions.json
+          git commit -m "Update Vellum core to ${{ steps.latest.outputs.tag }}"
+          git tag "$version"
+          git push origin HEAD:main "$version"
+          echo "tag=$version" >> "$GITHUB_OUTPUT"
+      - if: failure() && steps.latest.outputs.update == 'true'
+        name: Report the failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE_TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          title="Vellum $CORE_TAG did not pass the plugin checks"
+          open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')
+          if [ "$open" = "0" ]; then
+            gh issue create --title "$title" --body "The update to Vellum $CORE_TAG stopped here: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
+
+  release:
+    needs: update
+    if: needs.update.outputs.tag != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.update.outputs.tag }}

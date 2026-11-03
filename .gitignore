@@ -1,0 +1,14 @@
+node_modules/
+
+# Vellum core checkout, fetched by `npm run core` at the commit in vellum-core.json.
+vendor/
+
+# Build output. Releases attach main.js, manifest.json and styles.css.
+build/
+main.js
+
+test-results/
+playwright-report/
+
+.DS_Store
+*.log

@@ -1,0 +1,10 @@
+{
+  "id": "vellum",
+  "name": "Vellum",
+  "version": "1.0.0",
+  "minAppVersion": "1.7.2",
+  "description": "Draw structured and freehand diagrams, embed them in notes, and attach notes to shapes as strata.",
+  "author": "Josh Morris",
+  "authorUrl": "https://github.com/blueprintr-io",
+  "isDesktopOnly": false
+}

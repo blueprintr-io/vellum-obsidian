@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "noUnusedLocals": false
+  },
+  "include": [
+    "unit/*.ts",
+    "frame/*.ts",
+    "obsidian/*.ts",
+    "../src/env.d.ts"
+  ]
+}

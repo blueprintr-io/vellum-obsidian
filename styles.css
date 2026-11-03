@@ -1,0 +1,293 @@
+/* The diagram view: the editor fills the pane. */
+.vellum-view.view-content {
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.vellum-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.vellum-frame.is-loading {
+  visibility: hidden;
+}
+
+.vellum-view-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-8);
+  text-align: center;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.vellum-view-error p {
+  margin: 0;
+  max-width: 520px;
+}
+
+.vellum-view-error-detail {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  white-space: pre-wrap;
+}
+
+/* The hidden frame that renders embeds. It needs real layout to measure
+ * text, so it is laid out off-screen rather than not displayed. */
+.vellum-renderer-frame {
+  position: fixed;
+  left: -20000px;
+  top: 0;
+  width: 1600px;
+  height: 1200px;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Embedded diagrams */
+.vellum-embed-container.internal-embed {
+  display: block;
+}
+
+.vellum-embed {
+  position: relative;
+  max-width: 100%;
+}
+
+.vellum-embed-frame {
+  position: relative;
+  max-width: 100%;
+}
+
+.vellum-embed-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+.vellum-embed-open {
+  position: absolute;
+  z-index: 1;
+  top: var(--size-4-1);
+  right: var(--size-4-1);
+  opacity: 0;
+  background-color: var(--background-primary);
+  transition: opacity 120ms ease;
+}
+
+.vellum-embed-frame:hover .vellum-embed-open,
+.vellum-embed-open:focus-visible {
+  opacity: 1;
+}
+
+.vellum-embed.is-error .vellum-embed-error {
+  padding: var(--size-4-3);
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+/* A shape that opens a stratum or link. The glow approximates the one on
+ * the canvas: three blooms in blue, purple and green. */
+.vellum-hotspot {
+  position: absolute;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+.vellum-hotspot:hover,
+.vellum-hotspot:focus-visible {
+  box-shadow:
+    0 0 0 1px rgba(80, 180, 255, 0.9),
+    0 0 6px 2px rgba(160, 100, 255, 0.55),
+    0 0 14px 4px rgba(90, 230, 160, 0.4);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .vellum-hotspot:hover,
+  .vellum-hotspot:focus-visible {
+    animation: vellum-hotspot-cycle 10s linear infinite;
+  }
+}
+
+@keyframes vellum-hotspot-cycle {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(80, 180, 255, 0.9), 0 0 6px 2px rgba(160, 100, 255, 0.55), 0 0 14px 4px rgba(90, 230, 160, 0.4);
+  }
+  33% {
+    box-shadow: 0 0 0 1px rgba(160, 100, 255, 0.9), 0 0 6px 2px rgba(90, 230, 160, 0.55), 0 0 14px 4px rgba(80, 180, 255, 0.4);
+  }
+  66% {
+    box-shadow: 0 0 0 1px rgba(90, 230, 160, 0.9), 0 0 6px 2px rgba(80, 180, 255, 0.55), 0 0 14px 4px rgba(160, 100, 255, 0.4);
+  }
+}
+
+/* Stand-in target for page previews of links inside a diagram. */
+.vellum-hover-target {
+  position: fixed;
+  pointer-events: none;
+}
+
+/* Hover card for a stratum */
+.vellum-stratum-card {
+  position: fixed;
+  z-index: var(--layer-tooltip);
+  width: 320px;
+  max-height: 220px;
+  overflow: hidden;
+  padding: var(--size-4-2) var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+  pointer-events: none;
+}
+
+.vellum-stratum-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-1);
+  font-weight: var(--font-semibold);
+  font-size: var(--font-ui-small);
+}
+
+.vellum-stratum-card-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+
+.vellum-stratum-card-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.vellum-stratum-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vellum-stratum-card-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
+}
+
+.vellum-stratum-card-body.is-mono {
+  display: block;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  white-space: pre;
+}
+
+.vellum-stratum-card-body img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: var(--radius-s);
+}
+
+/* Floating stratum window */
+.vellum-stratum-window {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 320px;
+  min-height: 200px;
+  overflow: hidden;
+  resize: both;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-l);
+  outline: none;
+}
+
+.vellum-stratum-window.is-maximized {
+  inset: var(--size-4-4) !important;
+  width: auto !important;
+  height: auto !important;
+  resize: none;
+}
+
+.vellum-stratum-window-header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2) var(--size-4-1) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.vellum-stratum-window-header:active {
+  cursor: grabbing;
+}
+
+.vellum-stratum-window-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+
+.vellum-stratum-window-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.vellum-stratum-window-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-semibold);
+  font-size: var(--font-ui-small);
+}
+
+.vellum-stratum-window-pager,
+.vellum-stratum-window-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+}
+
+.vellum-stratum-window-count {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.vellum-stratum-window-body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--size-4-3) var(--size-4-4);
+  user-select: text;
+}
+
+.vellum-stratum-window-empty {
+  color: var(--text-muted);
+}
