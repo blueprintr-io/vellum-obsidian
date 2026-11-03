@@ -1,11 +1,12 @@
 // The plugin in a real Obsidian: a fresh vault with the built plugin
 // installed, driven through Obsidian's own UI.
 
+import { spawn, type ChildProcess } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { _electron as electron, expect, test, type ElectronApplication, type FrameLocator, type Page } from '@playwright/test';
+import { chromium, expect, test, type Browser, type FrameLocator, type Page } from '@playwright/test';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const services = readFileSync(join(root, 'test', 'fixtures', 'services.vellum'), 'utf8');
@@ -21,9 +22,13 @@ const FILES: Record<string, string> = {
   'Flow.vellum': services.replace('          body: Orders DB\n', '          body: Orders DB\n          meta:\n            link: "[[Runbook]]"\n'),
 };
 
-let app: ElectronApplication;
+const VAULT_WINDOW = 'app://obsidian.md/index.html';
+
+let obsidian: ChildProcess;
+let browser: Browser;
 let win: Page;
 let vault: string;
+let output = '';
 const errors: string[] = [];
 
 function makeVault() {
@@ -44,6 +49,49 @@ function makeVault() {
     vaults: { '0123456789abcdef': { path: dir, ts: Date.now(), open: true } },
   }));
   return { dir, config };
+}
+
+/**
+ * Starts Obsidian with the test config and returns its vault window.
+ * Obsidian's build turns off Electron's --inspect switch, which Playwright's
+ * Electron launcher depends on, so this connects to Chromium's debugging
+ * port instead.
+ */
+async function launch(config: string): Promise<Page> {
+  obsidian = spawn(process.env.OBSIDIAN_BIN!, ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--remote-debugging-port=0'], {
+    env: { ...process.env, XDG_CONFIG_HOME: config },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const endpoint = await new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Obsidian opened no debugging port.\n${output}`)), 90_000);
+    const listen = (chunk: Buffer) => {
+      if (output.length < 200_000) output += chunk.toString();
+      const match = /DevTools listening on (ws:\/\/\S+)/.exec(output);
+      if (match) {
+        clearTimeout(timer);
+        resolve(match[1]);
+      }
+    };
+    obsidian.stdout!.on('data', listen);
+    obsidian.stderr!.on('data', listen);
+    obsidian.once('exit', (code, signal) => {
+      clearTimeout(timer);
+      reject(new Error(`Obsidian exited (${signal ?? code}).\n${output}`));
+    });
+  });
+  browser = await chromium.connectOverCDP(endpoint);
+  const context = browser.contexts()[0];
+  // A new window reports about:blank until it navigates, so poll its URL
+  // rather than waiting for the page event.
+  const deadline = Date.now() + 90_000;
+  for (;;) {
+    const page = context.pages().find((p) => p.url().startsWith(VAULT_WINDOW));
+    if (page) return page;
+    if (Date.now() > deadline) {
+      throw new Error(`Obsidian opened no vault window. Pages: ${context.pages().map((p) => p.url()).join(', ') || 'none'}\n${output}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 const read = (path: string) => readFileSync(join(vault, path), 'utf8');
@@ -67,15 +115,11 @@ async function clearEditor(frame: FrameLocator) {
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
+  // A cold Electron start on a CI runner can take a while.
+  test.setTimeout(300_000);
   const made = makeVault();
   vault = made.dir;
-  app = await electron.launch({
-    executablePath: process.env.OBSIDIAN_BIN!,
-    args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-    env: { ...process.env, XDG_CONFIG_HOME: made.config },
-    timeout: 90_000,
-  });
-  win = await app.firstWindow();
+  win = await launch(made.config);
   win.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
@@ -95,13 +139,20 @@ test.beforeAll(async () => {
 
 test.afterEach(async ({}, info) => {
   if (info.status !== info.expectedStatus) {
-    await win.screenshot({ path: info.outputPath('obsidian.png') }).catch(() => {});
+    await win?.screenshot({ path: info.outputPath('obsidian.png') }).catch(() => {});
     writeFileSync(info.outputPath('console-errors.txt'), errors.join('\n\n'));
+    writeFileSync(info.outputPath('obsidian-output.txt'), output);
   }
 });
 
 test.afterAll(async () => {
-  await app?.close();
+  await browser?.close();
+  if (obsidian?.exitCode === null && obsidian.signalCode === null) {
+    const exited = new Promise((resolve) => obsidian.once('exit', resolve));
+    obsidian.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
+    obsidian.kill('SIGKILL');
+  }
 });
 
 test('opens a Markdown diagram in the Vellum view', async () => {
