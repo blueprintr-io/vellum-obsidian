@@ -165,7 +165,8 @@ test.describe('editor frame', () => {
 
 test.describe('frame storage', () => {
   test('installed libraries and added icon packs live in the plugin, not the frame', async ({ harness, page }) => {
-    const libraries = { state: { installed: [{ id: 'homelab-kit' }] }, version: 1 };
+    const installed = { id: 'homelab-kit', name: 'Homelab Kit', version: '1.0.0', license: 'MIT', authors: [], icons: [], source: { url: 'https://example.com/homelab-kit.vellumlib', gallery: false } };
+    const libraries = { state: { installed: [installed] }, version: 1 };
     await harness.open({ records: { 'vellum.libraries': libraries } });
     // The calls core's recovery backend makes, inside the frame.
     const result = await page.evaluate(async () => {
