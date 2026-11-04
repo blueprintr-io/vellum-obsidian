@@ -3,12 +3,12 @@
 // copy of the open workspace through localStorage and IndexedDB. Every
 // frame shares Obsidian's origin, so left alone each editor would read and
 // overwrite the others' recovery data. Instead the frame gets private
-// storage: preferences and the library go to the plugin, which keeps one
-// copy for all frames, and recovery copies are dropped because the file in
-// the vault is the document.
+// storage: preferences, the personal library, installed libraries and added
+// icon packs go to the plugin, which keeps one copy for all frames, and
+// recovery copies are dropped because the file in the vault is the document.
 
 import { z } from 'zod';
-import { FRAME_PROTOCOL, type FrameBoot, type HostApi, type StoredSlice } from '../shared/protocol';
+import { FRAME_PROTOCOL, isStoredRecord, type FrameBoot, type HostApi, type StoredSlice } from '../shared/protocol';
 
 // Zod probes whether it may compile parsers with `new Function`. The frame's
 // policy forbids it, so the probe would only log a violation; parsing is
@@ -57,14 +57,24 @@ if (boot.preferences) local.seed(PREFERENCES_KEY, JSON.stringify(boot.preference
 
 /** The part of IndexedDB core's recovery backend uses: one database with one
  *  object store, get/put/delete in single-request transactions. Documents
- *  written to it are discarded; the personal library is forwarded. */
+ *  written to it are discarded; the personal library is forwarded, and the
+ *  stored records are read from and written to the plugin's copy. Values
+ *  cross the frame boundary as structured clones, as IndexedDB would give. */
 function recoveryDatabase(library: StoredSlice<unknown[]> | null) {
   let lastLibrary: unknown = library?.state;
   const readRecord = (key: string) => {
+    if (isStoredRecord(key)) {
+      const value = host.readRecord(key);
+      return value === undefined ? undefined : structuredClone(value);
+    }
     if (key !== STORE_NAME || !library) return undefined;
     return { state: { personalLibrary: library.state }, version: library.version };
   };
   const writeRecord = (key: string, value: unknown) => {
+    if (isStoredRecord(key)) {
+      host.saveRecord(key, value);
+      return;
+    }
     if (key !== STORE_NAME || !value || typeof value !== 'object') return;
     const record = value as { state?: { personalLibrary?: unknown }; version?: number };
     const entries = record.state?.personalLibrary;
@@ -80,7 +90,7 @@ function recoveryDatabase(library: StoredSlice<unknown[]> | null) {
   const store = {
     get(key: string) { const request: Request = { error: null, result: readRecord(key) }; return request; },
     put(value: unknown, key: string) { writeRecord(key, value); const request: Request = { error: null, result: key }; return request; },
-    delete(_key: string) { const request: Request = { error: null, result: undefined }; return request; },
+    delete(key: string) { if (isStoredRecord(key)) host.saveRecord(key, undefined); const request: Request = { error: null, result: undefined }; return request; },
   };
   const database = {
     objectStoreNames: { contains: () => true },

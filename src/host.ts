@@ -12,6 +12,7 @@ import {
   type LinkAction,
   type PointerInfo,
   type Rect,
+  type StoredRecord,
   type StoredSlice,
   type StratumAction,
   type ViewMode,
@@ -72,6 +73,14 @@ export class ViewHost implements HostApi {
 
   saveLibrary(library: StoredSlice<unknown[]>) {
     this.plugin.saveLibrary(library, this.view);
+  }
+
+  readRecord(key: StoredRecord) {
+    return this.plugin.readRecord(key);
+  }
+
+  saveRecord(key: StoredRecord, value: unknown) {
+    this.plugin.saveRecord(key, value);
   }
 
   focused() {

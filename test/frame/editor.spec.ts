@@ -162,3 +162,41 @@ test.describe('editor frame', () => {
     }
   });
 });
+
+test.describe('frame storage', () => {
+  test('installed libraries and added icon packs live in the plugin, not the frame', async ({ harness, page }) => {
+    const libraries = { state: { installed: [{ id: 'homelab-kit' }] }, version: 1 };
+    await harness.open({ records: { 'vellum.libraries': libraries } });
+    // The calls core's recovery backend makes, inside the frame.
+    const result = await page.evaluate(async () => {
+      const frames = document.querySelectorAll<HTMLIFrameElement>('iframe.vellum-frame');
+      const idb = (frames[frames.length - 1].contentWindow as Window & typeof globalThis).indexedDB;
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = idb.open('vellum-recovery', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const run = (mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest) =>
+        new Promise<unknown>((resolve, reject) => {
+          const tx = db.transaction('workspaces', mode);
+          const request = op(tx.objectStore('workspaces'));
+          tx.oncomplete = () => resolve(request.result);
+          tx.onerror = () => reject(tx.error);
+        });
+      const read = await run('readonly', (s) => s.get('vellum.libraries'));
+      await run('readwrite', (s) => s.put({ version: 1, packs: [{ id: 'fortinet' }] }, 'vellum.iconPacks'));
+      const packs = await run('readonly', (s) => s.get('vellum.iconPacks'));
+      await run('readwrite', (s) => s.delete('vellum.libraries'));
+      await run('readwrite', (s) => s.put({ state: { diagram: {} }, version: 1 }, 'vellum.recovery-copy'));
+      const dropped = await run('readonly', (s) => s.get('vellum.recovery-copy'));
+      return { read, packs, dropped };
+    });
+    expect(result.read).toEqual(libraries);
+    expect(result.packs).toEqual({ version: 1, packs: [{ id: 'fortinet' }] });
+    expect(result.dropped).toBeUndefined();
+    expect((await harness.calls('saveRecord')).map((c) => c.args)).toEqual([
+      ['vellum.iconPacks', { version: 1, packs: [{ id: 'fortinet' }] }],
+      ['vellum.libraries', null],
+    ]);
+  });
+});

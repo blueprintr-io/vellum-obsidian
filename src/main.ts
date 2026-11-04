@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from 'obsidian';
 import { coreTag, fonts, script, style } from 'virtual:vellum-frame';
-import type { InsertAction, StoredSlice, ThemeName } from '../shared/protocol';
+import type { InsertAction, StoredRecord, StoredSlice, ThemeName } from '../shared/protocol';
 import { linkLabel, linkText, parseLink } from '../shared/links';
 import { FrameResources } from './frame-resources';
 import { createDiagram, diagramName, EXTENSION, isDiagram, isMarkdownDiagram, sourceOf, VIEW_TYPE } from './files';
@@ -31,6 +31,7 @@ import { StrataIndex } from './strata/index';
 import { retargetStratum } from './strata/notes';
 import { VellumView } from './view';
 import { createApi, type VellumApi } from './api';
+import { RecordStore } from './records';
 
 const ICON = '<g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"><rect x="10" y="14" width="38" height="30" rx="5"/><rect x="52" y="56" width="38" height="30" rx="5"/><path d="M29 44v27h23"/></g>';
 const LIBRARY_FILE = 'library.json';
@@ -63,6 +64,8 @@ export default class VellumPlugin extends Plugin {
   private undo: (() => void)[] = [];
   private saveTimer: number | undefined;
   private libraryTimer: number | undefined;
+  /** Installed libraries and added icon packs, as core last wrote them. */
+  private records!: RecordStore;
 
   override async onload() {
     this.strata = new StrataIndex(this.app);
@@ -72,6 +75,12 @@ export default class VellumPlugin extends Plugin {
     this.exporter = new Exporter(this);
     this.links = new LinkMaintainer(this);
     this.api = createApi(this);
+    // Ready before state loads: the embed renderer may boot first, and reads
+    // nothing until load() fills it.
+    this.records = new RecordStore(this.app.vault.adapter, this.manifest.dir ?? '', SAVE_DELAY_MS, (key, error) => {
+      console.error(`[vellum] could not save ${key}`, error);
+      new Notice(`Vellum could not save ${key === 'vellum.libraries' ? 'your installed libraries' : 'your added icon packs'}.`);
+    });
 
     addIcon('vellum-diagram', ICON);
     this.registerView(VIEW_TYPE, (leaf) => new VellumView(leaf, this));
@@ -100,6 +109,7 @@ export default class VellumPlugin extends Plugin {
   }
 
   override onunload() {
+    void this.records.flush();
     for (const fn of this.undo) fn();
     this.hover.unload();
     this.strataActions.windows.closeAll();
@@ -121,6 +131,7 @@ export default class VellumPlugin extends Plugin {
     this.preferences = prefs && typeof prefs === 'object' && prefs.state && typeof prefs.state === 'object' ? prefs : null;
     this.markdownLeaves = data.markdownLeaves && typeof data.markdownLeaves === 'object' ? { ...data.markdownLeaves } : {};
     this.library = await this.loadLibrary();
+    await this.records.load();
     if (data.version !== this.manifest.version) {
       if (data.version) this.announceUpdate();
       await this.persist();
@@ -149,6 +160,14 @@ export default class VellumPlugin extends Plugin {
       console.error('[vellum] could not read the personal library', error);
       return null;
     }
+  }
+
+  readRecord(key: StoredRecord): unknown {
+    return this.records.read(key);
+  }
+
+  saveRecord(key: StoredRecord, value: unknown) {
+    this.records.save(key, value);
   }
 
   async saveSettings() {
@@ -466,7 +485,7 @@ export default class VellumPlugin extends Plugin {
     }));
     this.registerEvent(this.app.workspace.on('quit', (tasks) => {
       tasks.add(async () => {
-        await Promise.all(this.views().map((view) => view.save().catch(() => {})));
+        await Promise.all([...this.views().map((view) => view.save().catch(() => {})), this.records.flush()]);
       });
     }));
   }

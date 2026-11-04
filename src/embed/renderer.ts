@@ -59,6 +59,8 @@ export class EmbedRenderer {
         replaced() {},
         savePreferences() {},
         saveLibrary() {},
+        readRecord: (key) => plugin.readRecord(key),
+        saveRecord() {},
         focused() {},
         setMode() {},
         stratum() {},

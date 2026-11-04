@@ -9,6 +9,7 @@ import {
   type FrameBoot,
   type HostApi,
   type KeyInit,
+  type StoredRecord,
   type StoredSlice,
   type ViewMode,
 } from '../../shared/protocol';
@@ -20,6 +21,8 @@ export interface OpenOptions {
   renderer?: boolean;
   preferences?: StoredSlice<Record<string, unknown>> | null;
   library?: StoredSlice<unknown[]> | null;
+  /** Stored records the plugin already holds. */
+  records?: Partial<Record<StoredRecord, unknown>>;
   pickFile?: { name: string; type: string; text: string } | null;
   saveTarget?: string | null;
   width?: number;
@@ -34,10 +37,13 @@ class FakeHost implements HostApi {
   calls: Call[] = [];
   saved: string[] = [];
   written: { path: string; text: string }[] = [];
+  records = new Map<StoredRecord, unknown>();
   private resolveReady!: () => void;
   readonly whenReady = new Promise<void>((resolve) => { this.resolveReady = resolve; });
 
-  constructor(private options: OpenOptions) {}
+  constructor(private options: OpenOptions) {
+    for (const [key, value] of Object.entries(options.records ?? {})) this.records.set(key as StoredRecord, value);
+  }
 
   private record(name: string, ...args: unknown[]) {
     this.calls.push({ name, args: JSON.parse(JSON.stringify(args)) });
@@ -69,6 +75,12 @@ class FakeHost implements HostApi {
   replaced(yaml: string, name: string | null, previous: string) { this.record('replaced', yaml.length > 0, name, previous.includes('API Gateway')); }
   savePreferences(p: StoredSlice<Record<string, unknown>>) { this.record('savePreferences', p); }
   saveLibrary(l: StoredSlice<unknown[]>) { this.record('saveLibrary', l); }
+  readRecord(key: StoredRecord) { return this.records.get(key); }
+  saveRecord(key: StoredRecord, value: unknown) {
+    this.record('saveRecord', key, value);
+    if (value === undefined) this.records.delete(key);
+    else this.records.set(key, JSON.parse(JSON.stringify(value)));
+  }
   focused() { this.record('focused'); }
   setMode(mode: ViewMode) {
     this.record('setMode', mode);

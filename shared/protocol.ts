@@ -7,7 +7,7 @@
 // Bump FRAME_PROTOCOL when a change needs both sides rebuilt together. The
 // frame refuses to start against a host that speaks another version.
 
-export const FRAME_PROTOCOL = 1;
+export const FRAME_PROTOCOL = 2;
 
 export type ViewMode = 'edit' | 'read';
 export type ThemeName = 'light' | 'dark';
@@ -119,6 +119,20 @@ export interface ExportResult {
   hotspots: Hotspot[];
 }
 
+/** IndexedDB records core keeps beside its recovery copy that the plugin
+ *  stores for every frame, each in its own file in the plugin folder:
+ *  installed libraries and added icon packs. Anything else written there is
+ *  a recovery copy, which the file in the vault makes unnecessary. */
+export const STORED_RECORDS = {
+  'vellum.libraries': 'libraries.json',
+  'vellum.iconPacks': 'icon-packs.json',
+} as const;
+export type StoredRecord = keyof typeof STORED_RECORDS;
+
+export function isStoredRecord(key: string): key is StoredRecord {
+  return Object.prototype.hasOwnProperty.call(STORED_RECORDS, key);
+}
+
 export interface FrameBoot {
   protocol: number;
   mode: ViewMode;
@@ -163,6 +177,11 @@ export interface HostApi {
   replaced(yaml: string, suggestedName: string | null, previous: string): void;
   savePreferences(preferences: StoredSlice<Record<string, unknown>>): void;
   saveLibrary(library: StoredSlice<unknown[]>): void;
+  /** The plugin's current copy of a stored record. Read on every request,
+   *  so a store reloading in one frame sees what another frame saved. */
+  readRecord(key: StoredRecord): unknown;
+  /** Replace a stored record; undefined deletes it. */
+  saveRecord(key: StoredRecord, value: unknown): void;
   focused(): void;
   setMode(mode: ViewMode): void;
   stratum(action: StratumAction): void;
